@@ -1,7 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import config from '../config/config';
 import { DatabaseService } from './database';
-import { WeeklyStepsKeyboard, WeekKeyboard } from './telegram/keyboards';
+import { WeekKeyboard } from './telegram/keyboards';
 import { Commands } from './telegram/commands';
 import { Messages } from './telegram/messages';
 import { FormatDateRange, GetWeekNumber } from './telegram/utils';
@@ -9,11 +9,8 @@ import { FormatDateRange, GetWeekNumber } from './telegram/utils';
 export class TelegramService {
   private bot: TelegramBot;
   private readonly db: DatabaseService;
-  private usersAwaitingSteps: Set<number> = new Set();
   private usersAwaitingWeekChoice: Set<number> = new Set();
   private botUsername: string = '';
-
-  private readonly weeklyStepsKeyboard = WeeklyStepsKeyboard;
 
   private readonly weekKeyboard = WeekKeyboard;
 
@@ -83,7 +80,6 @@ export class TelegramService {
         // Handle cancel button for both steps and week
         if (query.data === 'cancel') {
           // Clean up states
-          this.usersAwaitingSteps.delete(userId);
           this.usersAwaitingWeekChoice.delete(userId);
 
           // Edit message to show cancellation
@@ -110,9 +106,6 @@ export class TelegramService {
             },
             steps,
           );
-
-          this.usersAwaitingSteps.delete(userId);
-
           // Remove the inline keyboard after processing
           try {
             await this.bot.editMessageReplyMarkup(
@@ -172,7 +165,6 @@ export class TelegramService {
         });
 
         // Clean up states on error
-        this.usersAwaitingSteps.delete(userId);
         this.usersAwaitingWeekChoice.delete(userId);
 
         // Notify user in chat
@@ -235,32 +227,6 @@ export class TelegramService {
         }
       }
 
-      // Handle steps input state
-      if (userId && this.usersAwaitingSteps.has(userId)) {
-        console.log('User awaiting steps:', userId); // Debug log
-
-        if (msg.text === '/cancel') {
-          this.usersAwaitingSteps.delete(userId);
-          await this.bot.sendMessage(Number(chatId), Messages.cancelStepsMessage, {
-            reply_to_message_id: isGroup ? msg.message_id : undefined,
-          });
-          return;
-        }
-
-        const numberMatch = msg.text.match(/^\/?\s*(\d+)\s*$/);
-        if (numberMatch) {
-          console.log('Number pattern matched:', numberMatch[1]); // Debug log
-          await this.processSteps(msg, numberMatch[1]);
-          this.usersAwaitingSteps.delete(userId);
-          return;
-        } else {
-          await this.bot.sendMessage(Number(chatId), Messages.invalidStepsMessage, {
-            reply_to_message_id: isGroup ? msg.message_id : undefined,
-          });
-          return;
-        }
-      }
-
       // Handle commands
       if (isCmd) {
         const command = cleanText.split(' ')[0].toLowerCase();
@@ -284,7 +250,6 @@ export class TelegramService {
             break;
           case '/cancel':
             if (
-              !this.usersAwaitingSteps.has(userId!) &&
               !this.usersAwaitingWeekChoice.has(userId!)
             ) {
               await this.bot.sendMessage(Number(chatId), Messages.invalidCancelMessage, {
@@ -295,7 +260,6 @@ export class TelegramService {
           default:
             // Only show unknown command message if not in a waiting state
             if (
-              !this.usersAwaitingSteps.has(userId!) &&
               !this.usersAwaitingWeekChoice.has(userId!)
             ) {
               await this.bot.sendMessage(Number(chatId), Messages.unknownCommandMessage, {
@@ -312,7 +276,6 @@ export class TelegramService {
 
       // Clean up waiting states on error
       if (userId) {
-        this.usersAwaitingSteps.delete(userId);
         this.usersAwaitingWeekChoice.delete(userId);
       }
     }
@@ -362,30 +325,27 @@ export class TelegramService {
       return;
     }
 
-    // Get current week number and year
-    const currentDate = new Date();
-    const { week, year } = GetWeekNumber(currentDate);
-    const dateRange = FormatDateRange(week, year);
+    // Check if the message is in the correct format
+    const stepsAndKmMatch = msg.text?.match(/^\/steps\s+(\d+)(?:-\s*(\d+))?$/);
+    if (stepsAndKmMatch) {
+      await this.processSteps(msg, msg?.text!);
+    } else {
+      const promptMessage = Messages.stepsPromptMessage;
 
-    this.usersAwaitingSteps.add(userId);
-
-    const promptMessage = Messages.stepsMessage(week, dateRange);
-
-    const mentionUser = isGroup ? `@${msg.from?.username || msg.from?.first_name}, ` : '';
-    const finalMessage = isGroup ? mentionUser + promptMessage : promptMessage;
-
-    await this.bot.sendMessage(Number(chatId), finalMessage, {
-      reply_to_message_id: isGroup ? msg.message_id : undefined,
-      ...this.weeklyStepsKeyboard,
-    });
+      if (promptMessage) {
+        await this.bot.sendMessage(Number(chatId), promptMessage, {
+          reply_to_message_id: isGroup ? msg.message_id : undefined,
+        });
+      } else {
+        console.error('stepsPromptMessage is not defined');
+      }
+    }
   }
 
-  // Update processSteps to handle weekly data
-  private async processSteps(msg: TelegramBot.Message, stepsText: string): Promise<void> {
+  private async processSteps(msg: TelegramBot.Message, stepsInput: string): Promise<void> {
     const chatId = BigInt(msg.chat.id);
     const userId = msg.from?.id ? BigInt(msg.from.id) : null;
     const username = msg.from?.first_name || 'User';
-    const steps = parseInt(stepsText.trim());
     const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
 
     if (!userId) {
@@ -393,55 +353,66 @@ export class TelegramService {
       return;
     }
 
-    if (isNaN(steps) || steps < 0) {
-      await this.bot.sendMessage(Number(chatId), Messages.invalidStepsMessage, {
-        reply_to_message_id: isGroup ? msg.message_id : undefined,
-      });
-      return;
-    }
+    const stepsAndKmMatch = stepsInput.match(/^\/steps\s+(\d+)(?:-\s*(\d+))?$/);
+    if (stepsAndKmMatch) {
+      const steps = parseInt(stepsAndKmMatch[1]);
+      const km = stepsAndKmMatch[2] ? parseInt(stepsAndKmMatch[2]) : Math.round(steps * 0.0007);
 
-    // Increased maximum for weekly steps
-    if (steps > 500000) {
-      await this.bot.sendMessage(Number(chatId), Messages.stepsLimitError, {
-        reply_to_message_id: isGroup ? msg.message_id : undefined,
-      });
-      return;
-    }
-
-    try {
-      const currentDate = new Date();
-      const { week, year } = GetWeekNumber(currentDate);
-      const dateRange = FormatDateRange(week, year);
-
-      await this.db.logSteps({
-        userId,
-        username,
-        steps,
-        date: currentDate.toISOString().split('T')[0],
-        weekNumber: week,
-        year,
-        chatId,
-      });
-
-      const stats = await this.db.getWeeklyStats(chatId, week, year);
-      let message = `✅ Записано ${steps.toLocaleString()} шагов для ${
-        isGroup ? '@' + msg.from?.username || username : username
-      }!\n\nЗа неделю ${week} (${dateRange})\nОтличная работа, продолжай поддерживать активность! 🎉\n`;
-
-      if (stats.length > 1) {
-        message += '\n📊 Лидеры недели:\n';
-        stats.forEach((stat, index) => {
-          const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '👟';
-          message += `${medal} ${stat.username}: ${stat.totalSteps.toLocaleString()} шагов\n`;
+      if (isNaN(steps) || steps < 0 || (stepsAndKmMatch[2] && (isNaN(km) || km < 0))) {
+        await this.bot.sendMessage(Number(chatId), Messages.invalidStepsAndKmMessage, {
+          reply_to_message_id: isGroup ? msg.message_id : undefined,
         });
+        return;
       }
 
-      await this.bot.sendMessage(Number(chatId), message, {
-        reply_to_message_id: isGroup ? msg.message_id : undefined,
-      });
-    } catch (error) {
-      console.error('Error logging steps:', error);
-      await this.bot.sendMessage(Number(chatId), Messages.stepsSaveError, {
+      // Increased maximum for weekly steps
+      if (steps > 500000) {
+        await this.bot.sendMessage(Number(chatId), Messages.stepsLimitError, {
+          reply_to_message_id: isGroup ? msg.message_id : undefined,
+        });
+        return;
+      }
+
+      try {
+        const currentDate = new Date();
+        const { week, year } = GetWeekNumber(currentDate);
+        const dateRange = FormatDateRange(week, year);
+
+        await this.db.logSteps({
+          userId,
+          username,
+          steps,
+          km,
+          date: currentDate.toISOString().split('T')[0],
+          weekNumber: week,
+          year,
+          chatId,
+        });
+
+        const stats = await this.db.getWeeklyStats(chatId, week, year);
+        let message = `✅ Записано ${steps.toLocaleString()} шагов (${km.toLocaleString()} км) для ${
+            isGroup ? '@' + msg.from?.username || username : username
+        }!\n\nЗа неделю ${week} (${dateRange})\nОтличная работа, продолжай поддерживать активность! 🎉\n`;
+
+        if (stats.length > 1) {
+          message += '\n📊 Лидеры недели:\n';
+          stats.forEach((stat, index) => {
+            const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '👟';
+            message += `${medal} ${stat.username}: ${stat.totalSteps.toLocaleString()} шагов (${stat.totalKm.toLocaleString()} км)\n`;
+          });
+        }
+
+        await this.bot.sendMessage(Number(chatId), message, {
+          reply_to_message_id: isGroup ? msg.message_id : undefined,
+        });
+      } catch (error) {
+        console.error('Error logging steps:', error);
+        await this.bot.sendMessage(Number(chatId), Messages.stepsSaveError, {
+          reply_to_message_id: isGroup ? msg.message_id : undefined,
+        });
+      }
+    } else {
+      await this.bot.sendMessage(Number(chatId), Messages.invalidStepsAndKmMessage, {
         reply_to_message_id: isGroup ? msg.message_id : undefined,
       });
     }
@@ -523,13 +494,15 @@ export class TelegramService {
       const completedWeeks = dayOfWeek <= 3 ? stats.totalWeeks - 1 : stats.totalWeeks;
       const weeklyAverage =
         completedWeeks > 0 ? Math.round(stats.totalSteps / completedWeeks) : stats.totalSteps;
+      const weeklyAverageKm =
+        completedWeeks > 0 ? Math.round(stats.totalKm / completedWeeks) : stats.totalKm || 0;
 
       let message = `📊 Статистика ${username}:\n\n`;
 
       // Current week status
       if (progress.currentWeek > 0) {
         message += `🎯 Текущая неделя (${currentWeek}):\n`;
-        message += `• ${progress.currentWeek.toLocaleString()} шагов\n`;
+        message += `• ${progress.currentWeek.toLocaleString()} шагов (${Math.round(progress.currentWeek * 0.0007).toLocaleString()} км)\n`;
         if (currentRank > 0) {
           message += `• ${currentRank}-е место в рейтинге\n`;
         }
@@ -541,10 +514,10 @@ export class TelegramService {
 
       // Overall statistics
       message += `📈 Общая статистика:\n`;
-      message += `• Всего шагов: ${stats.totalSteps.toLocaleString()}\n`;
+      message += `• Всего шагов: ${stats.totalSteps.toLocaleString()} (${(stats.totalKm || 0).toLocaleString()} км)\n`;
       message += `• Недель записано: ${completedWeeks}\n`;
-      message += `• В среднем за неделю: ${weeklyAverage.toLocaleString()}\n`;
-      message += `• Лучший результат: ${stats.bestWeek.toLocaleString()} шагов\n`;
+      message += `• В среднем за неделю: ${weeklyAverage.toLocaleString()} шагов (${weeklyAverageKm.toLocaleString()} км)\n`;
+      message += `• Лучший результат: ${stats.bestWeek.toLocaleString()} шагов (${Math.round((stats.bestWeek || 0) * 0.0007).toLocaleString()} км)\n`;
 
       // Add achievements
       let achievements = '\n🏆 Достижения:\n';
@@ -566,8 +539,8 @@ export class TelegramService {
       // Add weekly comparison if available
       if (progress.previousWeek > 0) {
         message += `\n📅 Сравнение с прошлой неделей:\n`;
-        message += `• Прошлая: ${progress.previousWeek.toLocaleString()} шагов\n`;
-        message += `• Текущая: ${progress.currentWeek.toLocaleString()} шагов\n`;
+        message += `• Прошлая: ${progress.previousWeek.toLocaleString()} шагов (${Math.round(progress.previousWeek * 0.0007).toLocaleString()} км)\n`;
+        message += `• Текущая: ${progress.currentWeek.toLocaleString()} шагов (${Math.round(progress.currentWeek * 0.0007).toLocaleString()} км)\n`;
       }
 
       // Add motivation
@@ -618,7 +591,9 @@ export class TelegramService {
       // Rest of your existing stats display code...
       // Calculate statistics
       const totalSteps = stats.reduce((sum, stat) => sum + stat.totalSteps, 0);
+      const totalKm = stats.reduce((sum, stat) => sum + stat.totalKm, 0);
       const avgSteps = Math.round(totalSteps / stats.length);
+      const avgKm = Math.round(totalKm / stats.length);
 
       // Sort by steps in descending order
       const sortedStats = [...stats].sort((a, b) => b.totalSteps - a.totalSteps);
@@ -630,13 +605,13 @@ export class TelegramService {
       sortedStats.forEach((stat, index) => {
         const medal =
           index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
-        message += `${medal} ${stat.username}: ${stat.totalSteps.toLocaleString()} шагов\n`;
+        message += `${medal} ${stat.username}: ${stat.totalSteps.toLocaleString()} шагов (${stat.totalKm.toLocaleString()} км)\n`;
       });
 
       message += `\n📈 Общая статистика:\n`;
       message += `👥 Всего участников: ${stats.length}\n`;
-      message += `🎯 Общее количество шагов: ${totalSteps.toLocaleString()}\n`;
-      message += `📊 В среднем: ${avgSteps.toLocaleString()} шагов/человек\n`;
+      message += `🎯 Общее количество шагов: ${totalSteps.toLocaleString()} (${totalKm.toLocaleString()} км)\n`;
+      message += `📊 В среднем: ${avgSteps.toLocaleString()} шагов/человек (${avgKm.toLocaleString()} км/человек)\n`;
 
       await this.bot.sendMessage(Number(chatId), message, {
         reply_to_message_id: isGroup ? msg.message_id : undefined,

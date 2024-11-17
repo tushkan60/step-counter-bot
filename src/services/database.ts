@@ -73,6 +73,7 @@ export class DatabaseService {
           },
           data: {
             steps: entry.steps,
+            km: entry.km, // Update km field
             username: entry.username,
           },
         });
@@ -83,6 +84,7 @@ export class DatabaseService {
             user_id: entry.userId,
             username: entry.username,
             steps: entry.steps,
+            km: entry.km, // Set km field
             date: entry.date,
             week_number: entry.weekNumber,
             year: entry.year,
@@ -107,6 +109,7 @@ export class DatabaseService {
         select: {
           username: true,
           steps: true,
+          km: true, // Fetch km field
           week_number: true,
           year: true,
         },
@@ -118,6 +121,7 @@ export class DatabaseService {
       return steps.map((step) => ({
         username: step.username,
         totalSteps: step.steps,
+        totalKm: step.km, // New field for total kilometers
         weekNumber: step.week_number,
         year: step.year,
       }));
@@ -245,6 +249,7 @@ export class DatabaseService {
         totalSteps: basicStats._sum.steps ?? 0,
         averageSteps: Math.round(basicStats._avg.steps ?? 0),
         bestDay: basicStats._max.steps ?? 0,
+        totalKm: Math.round((basicStats._sum.steps ?? 0) * 0.0007),
         totalWeeks: basicStats._count.id,
         averageWeeklySteps: Math.round((basicStats._sum.steps ?? 0) / basicStats._count.id),
         bestWeek: bestWeek?._sum.steps ?? 0,

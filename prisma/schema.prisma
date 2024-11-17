@@ -15,13 +15,14 @@ datasource db {
 
 model Step {
   id          Int      @id @default(autoincrement())
-  user_id     BigInt // Changed from userId
+  user_id     BigInt
   username    String
   steps       Int
+  km          Int
   date        String
-  week_number Int // Changed from weekNumber
+  week_number Int
   year        Int
-  chat_id     BigInt // Changed from chatId
+  chat_id     BigInt
   created_at  DateTime @default(now())
 
   @@unique([user_id, week_number, year, chat_id])

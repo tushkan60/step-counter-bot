@@ -9,6 +9,7 @@ export interface StepEntry {
   username: string;
   steps: number;
   date: string;
+  km: number;
   weekNumber: number;
   year: number;
   chatId: bigint;
@@ -17,6 +18,7 @@ export interface StepEntry {
 export interface WeeklyStats {
   username: string;
   totalSteps: number;
+  totalKm: number;
   weekNumber: number;
   year: number;
 }
@@ -26,6 +28,7 @@ export interface UserStats {
   totalSteps: number;
   averageSteps: number;
   bestDay: number;
+  totalKm: number;
   totalWeeks: number;
   averageWeeklySteps: number;
   bestWeek: number;
