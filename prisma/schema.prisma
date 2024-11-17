@@ -1,0 +1,30 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Step {
+  id          Int      @id @default(autoincrement())
+  user_id     BigInt // Changed from userId
+  username    String
+  steps       Int
+  date        String
+  week_number Int // Changed from weekNumber
+  year        Int
+  chat_id     BigInt // Changed from chatId
+  created_at  DateTime @default(now())
+
+  @@unique([user_id, week_number, year, chat_id])
+  @@index([chat_id, week_number, year])
+  @@index([user_id, chat_id])
+}
