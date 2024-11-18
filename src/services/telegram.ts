@@ -239,6 +239,9 @@ export class TelegramService {
           case '/steps':
             await this.handleStepsCommand(msg);
             break;
+          case '/laststeps':
+            await this.handleLastStepsCommand(msg);
+            break;
           case '/week':
             await this.handleWeekCommand(msg);
             break;
@@ -407,6 +410,109 @@ export class TelegramService {
         });
       } catch (error) {
         console.error('Error logging steps:', error);
+        await this.bot.sendMessage(Number(chatId), Messages.stepsSaveError, {
+          reply_to_message_id: isGroup ? msg.message_id : undefined,
+        });
+      }
+    } else {
+      await this.bot.sendMessage(Number(chatId), Messages.invalidStepsAndKmMessage, {
+        reply_to_message_id: isGroup ? msg.message_id : undefined,
+      });
+    }
+  }
+
+  private async handleLastStepsCommand(msg: TelegramBot.Message): Promise<void> {
+    const chatId = BigInt(msg.chat.id);
+    const userId = msg.from?.id;
+    const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+
+    if (!userId) {
+      await this.bot.sendMessage(Number(chatId), Messages.userIdentificationError);
+      return;
+    }
+
+    // Check if the message is in the correct format
+    const stepsAndKmMatch = msg.text?.match(/^\/laststeps\s+(\d+)(?:-\s*(\d+))?$/);
+    if (stepsAndKmMatch) {
+      await this.processLastWeekSteps(msg, msg?.text!);
+    } else {
+      const promptMessage = Messages.lastStepsPromptMessage;
+
+      await this.bot.sendMessage(Number(chatId), promptMessage, {
+        reply_to_message_id: isGroup ? msg.message_id : undefined,
+      });
+    }
+  }
+
+  private async processLastWeekSteps(msg: TelegramBot.Message, stepsInput: string): Promise<void> {
+    const chatId = BigInt(msg.chat.id);
+    const userId = msg.from?.id ? BigInt(msg.from.id) : null;
+    const username = msg.from?.first_name || 'User';
+    const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+
+    if (!userId) {
+      await this.bot.sendMessage(Number(chatId), Messages.userIdentificationError);
+      return;
+    }
+
+    const stepsAndKmMatch = stepsInput.match(/^\/laststeps\s+(\d+)(?:-\s*(\d+))?$/);
+    if (stepsAndKmMatch) {
+      const steps = parseInt(stepsAndKmMatch[1]);
+      const km = stepsAndKmMatch[2] ? parseInt(stepsAndKmMatch[2]) : Math.round(steps * 0.0007);
+
+      if (isNaN(steps) || steps < 0 || (stepsAndKmMatch[2] && (isNaN(km) || km < 0))) {
+        await this.bot.sendMessage(Number(chatId), Messages.invalidStepsAndKmMessage, {
+          reply_to_message_id: isGroup ? msg.message_id : undefined,
+        });
+        return;
+      }
+
+      if (steps > 500000) {
+        await this.bot.sendMessage(Number(chatId), Messages.stepsLimitError, {
+          reply_to_message_id: isGroup ? msg.message_id : undefined,
+        });
+        return;
+      }
+
+      try {
+        const currentDate = new Date();
+        const { week: currentWeek, year: currentYear } = GetWeekNumber(currentDate);
+
+        // Calculate last week
+        const lastWeek = currentWeek === 1 ? 52 : currentWeek - 1;
+        const lastWeekYear = currentWeek === 1 ? currentYear - 1 : currentYear;
+
+        const dateRange = FormatDateRange(lastWeek, lastWeekYear);
+
+        await this.db.logSteps({
+          userId,
+          username,
+          steps,
+          km,
+          date: currentDate.toISOString().split('T')[0],
+          weekNumber: lastWeek,  // Use last week's number
+          year: lastWeekYear,    // Use last week's year
+          chatId,
+        });
+
+        const stats = await this.db.getWeeklyStats(chatId, lastWeek, lastWeekYear);
+        let message = `✅ Записано ${steps.toLocaleString()} шагов (${km.toLocaleString()} км) для ${
+            isGroup ? '@' + msg.from?.username || username : username
+        }!\n\nЗа прошлую неделю ${lastWeek} (${dateRange})\nОтличная работа! 🎉\n`;
+
+        if (stats.length > 1) {
+          message += '\n📊 Лидеры недели:\n';
+          stats.forEach((stat, index) => {
+            const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '👟';
+            message += `${medal} ${stat.username}: ${stat.totalSteps.toLocaleString()} шагов (${stat.totalKm.toLocaleString()} км)\n`;
+          });
+        }
+
+        await this.bot.sendMessage(Number(chatId), message, {
+          reply_to_message_id: isGroup ? msg.message_id : undefined,
+        });
+      } catch (error) {
+        console.error('Error logging steps for last week:', error);
         await this.bot.sendMessage(Number(chatId), Messages.stepsSaveError, {
           reply_to_message_id: isGroup ? msg.message_id : undefined,
         });
