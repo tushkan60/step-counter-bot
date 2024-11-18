@@ -11,7 +11,7 @@ export const Commands: BotCommand[] = [
   },
   {
     command: 'laststeps',
-    description: 'Записать шаги за прошлую неделю'
+    description: 'Записать шаги за прошлую неделю',
   },
   {
     command: 'mystats',

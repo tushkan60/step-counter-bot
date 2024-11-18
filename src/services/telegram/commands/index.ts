@@ -1,1 +1,1 @@
-export * from './BotCommands'
+export * from './BotCommands';

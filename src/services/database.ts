@@ -1,5 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
-import {DailyStats, StepEntry, UserStats, WeeklyStats} from '@/types/types';
+import { DailyStats, StepEntry, UserStats, WeeklyStats } from '@/types/types';
 
 export class DatabaseService {
   private prisma: PrismaClient;

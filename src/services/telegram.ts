@@ -252,9 +252,7 @@ export class TelegramService {
             await this.handleHelpCommand(msg);
             break;
           case '/cancel':
-            if (
-              !this.usersAwaitingWeekChoice.has(userId!)
-            ) {
+            if (!this.usersAwaitingWeekChoice.has(userId!)) {
               await this.bot.sendMessage(Number(chatId), Messages.invalidCancelMessage, {
                 reply_to_message_id: isGroup ? msg.message_id : undefined,
               });
@@ -262,9 +260,7 @@ export class TelegramService {
             break;
           default:
             // Only show unknown command message if not in a waiting state
-            if (
-              !this.usersAwaitingWeekChoice.has(userId!)
-            ) {
+            if (!this.usersAwaitingWeekChoice.has(userId!)) {
               await this.bot.sendMessage(Number(chatId), Messages.unknownCommandMessage, {
                 reply_to_message_id: isGroup ? msg.message_id : undefined,
               });
@@ -394,7 +390,7 @@ export class TelegramService {
 
         const stats = await this.db.getWeeklyStats(chatId, week, year);
         let message = `✅ Записано ${steps.toLocaleString()} шагов (${km.toLocaleString()} км) для ${
-            isGroup ? '@' + msg.from?.username || username : username
+          isGroup ? '@' + msg.from?.username || username : username
         }!\n\nЗа неделю ${week} (${dateRange})\nОтличная работа, продолжай поддерживать активность! 🎉\n`;
 
         if (stats.length > 1) {
@@ -490,14 +486,14 @@ export class TelegramService {
           steps,
           km,
           date: currentDate.toISOString().split('T')[0],
-          weekNumber: lastWeek,  // Use last week's number
-          year: lastWeekYear,    // Use last week's year
+          weekNumber: lastWeek, // Use last week's number
+          year: lastWeekYear, // Use last week's year
           chatId,
         });
 
         const stats = await this.db.getWeeklyStats(chatId, lastWeek, lastWeekYear);
         let message = `✅ Записано ${steps.toLocaleString()} шагов (${km.toLocaleString()} км) для ${
-            isGroup ? '@' + msg.from?.username || username : username
+          isGroup ? '@' + msg.from?.username || username : username
         }!\n\nЗа прошлую неделю ${lastWeek} (${dateRange})\nОтличная работа! 🎉\n`;
 
         if (stats.length > 1) {
