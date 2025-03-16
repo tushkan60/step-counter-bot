@@ -11,3 +11,5 @@ yarn-error.log*
 /steps.db
 /prisma/dev.db
 .vscode/*
+.env
+`steps.db
