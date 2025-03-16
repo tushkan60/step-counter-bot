@@ -7,7 +7,7 @@ yarn-debug.log*
 yarn-error.log*
 /.pnp
 .pnp.js
-.env
-steps.db
+/.env
+/steps.db
 /prisma/dev.db
 .vscode/*
