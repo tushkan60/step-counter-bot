@@ -92,33 +92,6 @@ export class TelegramService {
           return;
         }
 
-        // Handle steps callbacks
-        if (query.data.startsWith('steps_')) {
-          const steps = query.data.split('_')[1];
-
-          // Process the steps
-          await this.processSteps(
-            {
-              ...query.message,
-              from: query.from,
-              chat: query.message.chat,
-              message_id: query.message.message_id,
-            },
-            steps,
-          );
-          // Remove the inline keyboard after processing
-          try {
-            await this.bot.editMessageReplyMarkup(
-              { inline_keyboard: [] },
-              {
-                chat_id: Number(chatId),
-                message_id: query.message.message_id,
-              },
-            );
-          } catch (editError) {
-            console.error('Error removing keyboard:', editError);
-          }
-        }
         // Handle week callbacks
         else if (query.data.startsWith('week_')) {
           const action = query.data.split('_')[1];
@@ -136,10 +109,10 @@ export class TelegramService {
               break;
             case 'custom':
               await this.bot.sendMessage(Number(chatId), Messages.weekNumberMessage);
-              break;
+              return;
           }
 
-          this.usersAwaitingWeekChoice.delete(userId);
+          // this.usersAwaitingWeekChoice.delete(userId);
 
           // Remove the inline keyboard after processing
           try {
